@@ -1,0 +1,1 @@
+@extends('layouts.app') @section('title','Punto de venta') @section('content')<div><h1>Punto de venta</h1><p class="mt-2 text-sm text-slate-500">Busca productos o escanea su código. Los precios y el stock se verifican al confirmar.</p></div><livewire:point-of-sale />@endsection

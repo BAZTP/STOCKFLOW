@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Reproducible setup for the managed cloud machine; do not overwrite custom DB settings.
+set -euo pipefail
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$repo"
+mkdir -p /workspace/.composer-cache /workspace/cloud-runtime
+build_args=()
+if [[ -n "${CODEX_PROXY_CERT:-}" ]]; then build_args+=(--secret "id=proxy_ca,src=$CODEX_PROXY_CERT"); fi
+docker build "${build_args[@]}" -t stockflow-php:8.5 docker
+python3 - <<'PY'
+from pathlib import Path
+import secrets
+root=Path('/workspace/STOCKFLOW')
+local=root/'.env'
+if not local.exists():local.write_text((root/'.env.example').read_text())
+text=local.read_text()
+values={}
+for line in text.splitlines():
+ if '=' in line and not line.startswith('#'):
+  key,value=line.split('=',1);values[key]=value.strip().strip('"').strip("'")
+expected={'DB_CONNECTION':'mysql','DB_HOST':'stockflow-db','DB_DATABASE':'stockflow','DB_USERNAME':'stockflow'}
+if any(values.get(k)!=v for k,v in expected.items()):
+ raise SystemExit('Custom DB settings detected. They were preserved. Configure the cloud database explicitly before retrying.')
+if not values.get('DB_PASSWORD'):
+ values['DB_PASSWORD']=secrets.token_urlsafe(32)
+ text=text.replace('DB_PASSWORD=\n','DB_PASSWORD='+values['DB_PASSWORD']+'\n')
+ local.write_text(text)
+runtime=Path('/workspace/cloud-runtime/mysql.env')
+if not runtime.exists():
+ runtime.write_text('MYSQL_DATABASE=stockflow\nMYSQL_USER=stockflow\nMYSQL_PASSWORD='+values['DB_PASSWORD']+'\nMYSQL_ROOT_PASSWORD='+secrets.token_urlsafe(32)+'\n')
+ runtime.chmod(0o600)
+PY
+if ! docker network inspect stockflow >/dev/null 2>&1; then docker network create stockflow >/dev/null; fi
+if ! docker container inspect stockflow-db >/dev/null 2>&1; then
+ docker run -d --name stockflow-db --network stockflow --env-file /workspace/cloud-runtime/mysql.env \
+  --mount type=volume,src=stockflow-mysql,dst=/var/lib/mysql \
+  --mount "type=bind,src=$repo/docker/init.sql,dst=/docker-entrypoint-initdb.d/init.sql,readonly" mysql:8.4 >/dev/null
+elif [[ "$(docker inspect -f '{{.State.Running}}' stockflow-db)" != true ]]; then docker start stockflow-db >/dev/null; fi
+ready=false
+for attempt in {1..30}; do
+ if docker exec stockflow-db mysqladmin ping --silent >/dev/null 2>&1; then ready=true; break; fi
+ sleep 1
+done
+[[ "$ready" == true ]] || { echo 'MySQL no respondió; revisar docker logs stockflow-db.' >&2; exit 1; }
+bin/cloud-php composer install --prefer-dist --no-interaction --no-progress
+if rg -q '^APP_KEY=$' .env; then bin/cloud-php php artisan key:generate --force; fi
+bin/cloud-php php artisan migrate --seed --force
+if [[ ! -L public/storage ]]; then bin/cloud-php php artisan storage:link; fi
+npm ci --no-audit --no-fund
+npm run build

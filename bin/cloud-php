@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+args=()
+if [[ -t 0 ]]; then args+=(-it); else args+=(-i); fi
+if [[ -n "${CODEX_PROXY_CERT:-}" ]]; then
+ args+=(--mount "type=bind,src=$CODEX_PROXY_CERT,dst=/run/proxy-ca.pem,readonly" -e COMPOSER_CAFILE=/run/proxy-ca.pem -e GIT_SSL_CAINFO=/run/proxy-ca.pem)
+fi
+exec docker run --rm --user "$(id -u):$(id -g)" --network stockflow \
+ --mount "type=bind,src=$repo,dst=/workspace/STOCKFLOW" \
+ --mount type=bind,src=/workspace/.composer-cache,dst=/tmp/composer \
+ -e COMPOSER_HOME=/tmp/composer "${args[@]}" -w /workspace/STOCKFLOW stockflow-php:8.5 "$@"
