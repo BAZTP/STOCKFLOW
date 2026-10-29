@@ -9,11 +9,13 @@ Livewire 4, Alpine.js, Tailwind CSS, Chart.js, Lucide y DomPDF.
 
 - Autenticación con Laravel Fortify: inicio/cierre de sesión, recuperación de
   contraseña, perfil, cambio de contraseña y administración de usuarios.
-- Roles y autorización en el servidor; no existe registro público de usuarios.
+- Acceso móvil rápido por código QR: inicio de sesión instantáneo en dispositivos móviles
+  mediante URLs firmadas temporales (`signed:relative`), sin necesidad de escribir contraseñas.
+- Imágenes y fotos de productos: carga de imágenes JPG/PNG/WebP, soporte de captura
+  directa con la cámara del celular (`capture="environment"`), previsualización y miniaturas en catálogo.
 - Catálogos de productos, categorías, proveedores y clientes, con búsqueda,
   filtros, paginación, desactivación e historial de actividad.
-- Imágenes JPG/PNG/WebP, exportación de productos a CSV e importación validada
-  de hasta 1000 filas. Un error revierte toda la importación.
+- Exportación de productos a CSV e importación validada de hasta 1000 filas. Un error revierte toda la importación.
 - Compras pendientes y recepción completa que registra entradas de inventario.
 - Movimientos con usuario, motivo, cantidad y saldos anterior/posterior;
   ajustes autorizados y alertas de stock mínimo.
@@ -42,6 +44,21 @@ Livewire 4, Alpine.js, Tailwind CSS, Chart.js, Lucide y DomPDF.
 
 Los roles iniciales se crean mediante `DatabaseSeeder`. Las Policies protegen
 los catálogos; los servicios y Gates verifican las operaciones comerciales.
+
+## Acceso móvil con Código QR y fotos de productos
+
+StockFlow incluye una integración móvil para agilizar el registro de inventario desde smartphones:
+
+1. **Generación del QR de acceso**:
+   - Desde la barra lateral de navegación (**Acceso Celular (QR)**) o en **Mi perfil**, haz clic en "Abrir Código QR para Celular".
+   - El sistema genera un código QR utilizando la librería local `endroid/qr-code` v6 con una URL firmada de 24 horas de validez (`signed:relative`).
+   - Detecta de forma automática la dirección IP local de la computadora (Wi-Fi/Ethernet) para que cualquier teléfono en la misma red local pueda conectarse.
+2. **Escaneo e inicio de sesión**:
+   - Escanea el código con la cámara de tu smartphone.
+   - El enlace inicia sesión automáticamente en la cuenta sin necesidad de ingresar credenciales.
+3. **Captura y carga de fotos de productos**:
+   - Al crear o editar un producto desde el celular, el campo **Foto del producto** activa directamente la cámara del dispositivo móvil (`capture="environment"`).
+   - Las fotos capturadas se almacenan en `storage/app/public/products` y se muestran tanto en el catálogo general como en la ficha técnica del producto.
 
 ## Entorno cloud preparado
 
@@ -87,6 +104,15 @@ instalación nativa; la validación del motor SQL Server está pendiente por el 
 El archivo `.env.example` no contiene credenciales reales. Configura `.env`
 según tu instalación y no lo subas a Git. Crea las bases `stockflow` y
 `stockflow_test` con un usuario que pueda operar sobre ellas.
+
+Para iniciar el servidor rápidamente en Windows permitiendo conexiones en red local (para celulares):
+```cmd
+iniciar.bat
+```
+O manualmente:
+```bash
+php artisan serve --host=0.0.0.0 --port=8000
+```
 
 ## Script SQL para SQL Server Management Studio
 

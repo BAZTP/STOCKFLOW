@@ -6,9 +6,11 @@ use Illuminate\Validation\ValidationException;
 
 final class Money
 {
-    public static function cents(string|int $value): int
+    public static function cents(string|int|float $value): int
     {
-        if (! preg_match('/^\d{1,12}(?:\.\d{1,2})?$/', (string) $value)) {
+        $value = preg_replace('/^\./', '0.', (string) $value);
+        $value = preg_replace('/(\.\d{2})0+$/', '$1', $value);
+        if (! preg_match('/^\d{1,12}(?:\.\d{1,2})?$/', $value)) {
             throw ValidationException::withMessages(['amount' => 'Importe inválido. Usa hasta dos decimales y ningún separador de miles.']);
         }[$whole,$fraction] = array_pad(explode('.', (string) $value), 2, '');
         $result = (int) $whole * 100 + (int) str_pad($fraction, 2, '0');
