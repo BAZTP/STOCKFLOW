@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo="$(cd "$(dirname "$0")/.." && pwd)"
-if ! docker network inspect stockflow >/dev/null 2>&1 || ! docker container inspect stockflow-db >/dev/null 2>&1; then
+if ! docker container inspect stockflow-sqlserver >/dev/null 2>&1; then
  "$repo/bin/cloud-install"
 fi
-if [[ "$(docker inspect -f '{{.State.Running}}' stockflow-db)" != true ]]; then docker start stockflow-db >/dev/null; fi
-ready=false
-for attempt in {1..30}; do
- if docker exec stockflow-db mysqladmin ping --silent >/dev/null 2>&1; then ready=true; break; fi
- sleep 1
-done
-if [[ "$ready" != true ]]; then echo 'MySQL no respondió; revisar docker logs stockflow-db.' >&2; exit 1; fi
-if docker container inspect stockflow-app >/dev/null 2>&1; then
- if [[ "$(docker inspect -f '{{.State.Running}}' stockflow-app)" != true ]]; then docker start stockflow-app >/dev/null; fi
+"$repo/bin/cloud-sqlserver"
+"$repo/bin/cloud-php" php artisan migrate --seed --force
+if docker container inspect stockflow-app >/dev/null 2>&1; then docker stop stockflow-app >/dev/null; fi
+if docker container inspect stockflow-app-sqlserver >/dev/null 2>&1; then
+ if [[ "$(docker inspect -f '{{.State.Running}}' stockflow-app-sqlserver)" != true ]]; then docker start stockflow-app-sqlserver >/dev/null; fi
 else
- docker run -d --name stockflow-app --network stockflow --user "$(id -u):$(id -g)" \
+ docker run -d --name stockflow-app-sqlserver --network stockflow --user "$(id -u):$(id -g)" \
   -p 127.0.0.1:8000:8000 --mount "type=bind,src=$repo,dst=/workspace/STOCKFLOW" \
-  stockflow-php:8.5 php artisan serve --host=0.0.0.0 --port=8000 >/dev/null
+  --mount type=bind,src=/workspace/cloud-runtime/sqlserver-tls/ca-bundle.crt,dst=/etc/ssl/certs/ca-certificates.crt,readonly \
+  stockflow-php:sqlserver php artisan serve --host=0.0.0.0 --port=8000 >/dev/null
 fi
 for attempt in {1..30}; do
- if curl --silent --fail http://127.0.0.1:8000/login >/dev/null; then echo 'Aplicación y MySQL disponibles; login respondió correctamente.'; exit 0; fi
+ if curl --silent --fail http://127.0.0.1:8000/login >/dev/null; then echo 'Aplicación y SQL Server disponibles; login respondió correctamente.'; exit 0; fi
  sleep 1
 done
-echo 'La aplicación no respondió correctamente; revisar docker logs stockflow-app.' >&2
+echo 'La aplicación no respondió correctamente; revisar docker logs stockflow-app-sqlserver.' >&2
 exit 1

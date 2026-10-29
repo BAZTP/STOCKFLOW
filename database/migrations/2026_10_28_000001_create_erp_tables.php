@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -50,7 +51,10 @@ return new class extends Migration
         Schema::create('products', function (Blueprint $t) {
             $t->id();
             $t->string('sku')->unique();
-            $t->string('barcode')->nullable()->unique();
+            $t->string('barcode')->nullable();
+            if (DB::getDriverName() !== 'sqlsrv') {
+                $t->unique('barcode');
+            }
             $t->string('name');
             $t->text('description')->nullable();
             $t->foreignId('category_id')->constrained();
@@ -66,6 +70,9 @@ return new class extends Migration
             $t->timestamps();
             $t->softDeletes();
         });
+        if (DB::getDriverName() === 'sqlsrv') {
+            DB::statement('CREATE UNIQUE INDEX products_barcode_unique ON products (barcode) WHERE barcode IS NOT NULL');
+        }
         foreach (['purchases', 'sales'] as $table) {
             Schema::create($table, function (Blueprint $t) use ($table) {
                 $t->id();
@@ -132,7 +139,8 @@ return new class extends Migration
             $t->timestamps();
         });
         Schema::create('company_settings', function (Blueprint $t) {
-            $t->id();
+            // One settings row has the stable application key 1; no IDENTITY insert needed.
+            $t->unsignedBigInteger('id')->primary();
             $t->string('name')->default('StockFlow ERP');
             $t->string('legal_name')->nullable();
             $t->string('identification')->nullable();

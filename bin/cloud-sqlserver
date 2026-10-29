@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$repo"
+python3 bin/cloud-sqlserver-prepare.py
+runtime=/workspace/cloud-runtime
+if ! docker network inspect stockflow >/dev/null 2>&1; then docker network create stockflow >/dev/null; fi
+# The server key is readable only by SQL Server and root inside the container.
+docker run --rm --user 0 --mount "type=bind,src=$runtime/sqlserver-tls,dst=/tls" stockflow-php:sqlserver sh -c 'chown 10001:0 /tls/server.key; chmod 640 /tls/server.key'
+if ! docker container inspect stockflow-sqlserver >/dev/null 2>&1; then
+ docker run -d --name stockflow-sqlserver --network stockflow --env-file "$runtime/sqlserver.env" \
+  --mount type=volume,src=stockflow-sqlserver-data,dst=/var/opt/mssql \
+  --mount "type=bind,src=$runtime/sqlserver-tls,dst=/var/opt/mssql/secrets,readonly" \
+  --mount "type=bind,src=$runtime/sqlserver-tls/mssql.conf,dst=/var/opt/mssql/mssql.conf,readonly" \
+  --mount "type=bind,src=$runtime/sqlserver-tls/ca-bundle.crt,dst=/etc/ssl/certs/ca-certificates.crt,readonly" \
+  stockflow-sqlserver:2022 >/dev/null
+elif [[ "$(docker inspect -f '{{.State.Running}}' stockflow-sqlserver)" != true ]]; then docker start stockflow-sqlserver >/dev/null; fi
+ready=false
+for attempt in {1..60}; do
+ if docker exec stockflow-sqlserver sh -c 'SQLCMDPASSWORD="$MSSQL_SA_PASSWORD" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -N -b -Q "SELECT 1"' >/dev/null 2>&1; then ready=true; break; fi
+ sleep 1
+done
+[[ "$ready" == true ]] || { echo 'SQL Server no respondió; revisar docker logs stockflow-sqlserver.' >&2; exit 1; }
+docker exec -i stockflow-sqlserver sh -c 'SQLCMDPASSWORD="$MSSQL_SA_PASSWORD" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -N -b' < "$runtime/sqlserver-init.sql"
+cp "$runtime/sqlserver-app.env" .env
+chmod 600 .env

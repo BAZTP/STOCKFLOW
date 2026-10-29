@@ -1,0 +1,17 @@
+FROM ubuntu:22.04
+ENV ACCEPT_EULA=Y MSSQL_PID=Developer MSSQL_MEMORY_LIMIT_MB=2048
+RUN --mount=type=secret,id=proxy_ca \
+    apt-get -o Acquire::https::Timeout=30 -o Acquire::Retries=0 update && apt-get -o Acquire::https::Timeout=30 -o Acquire::Retries=0 install -y --no-install-recommends ca-certificates curl gnupg && \
+    cp /etc/ssl/certs/ca-certificates.crt /tmp/original-ca.crt && \
+    if [ -f /run/secrets/proxy_ca ]; then cat /run/secrets/proxy_ca >> /etc/ssl/certs/ca-certificates.crt; fi && \
+    curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -o /tmp/microsoft-prod.deb && \
+    dpkg -i /tmp/microsoft-prod.deb && \
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-sqlserver.gpg && \
+    echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-sqlserver.gpg] https://packages.microsoft.com/ubuntu/22.04/mssql-server-2022 jammy main' > /etc/apt/sources.list.d/mssql-server.list && \
+    apt-get -o Acquire::https::Timeout=30 -o Acquire::Retries=0 update && apt-get -o Acquire::https::Timeout=30 -o Acquire::Retries=0 install -y --no-install-recommends mssql-server mssql-tools18 && \
+    usermod -u 10001 -g 0 mssql && mkdir -p /var/opt/mssql && chown -R 10001:0 /var/opt/mssql && \
+    rm -rf /var/lib/apt/lists/* /tmp/microsoft-prod.deb && \
+    mv /tmp/original-ca.crt /etc/ssl/certs/ca-certificates.crt
+USER 10001:0
+EXPOSE 1433
+CMD ["/opt/mssql/bin/sqlservr"]

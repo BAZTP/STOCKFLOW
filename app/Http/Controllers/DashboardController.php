@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\Sale;
 use App\Models\Supplier;
 use App\Services\ReportService;
+use App\Support\SqlDate;
 use Illuminate\Http\Request;
 
 class DashboardController extends Controller
@@ -22,7 +23,8 @@ class DashboardController extends Controller
         if ($financial) {
             $stats += ['today' => Sale::where('status', 'completed')->whereDate('created_at', today())->sum('total'), 'month' => Sale::where('status', 'completed')->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->sum('total'), 'net' => (clone $sales)->selectRaw('COALESCE(SUM(subtotal-discount),0) as value')->value('value'), 'profit' => (clone $sales)->selectRaw('COALESCE(SUM(subtotal-discount-cost),0) as value')->value('value')];
         }
-        $daily = $financial ? (clone $sales)->selectRaw('DATE(created_at) as day, SUM(total) as total')->groupBy('day')->orderBy('day')->get() : collect();
+        $day = SqlDate::day('created_at');
+        $daily = $financial ? (clone $sales)->selectRaw($day.' as day, SUM(total) as total')->groupByRaw($day)->orderBy('day')->get() : collect();
         $latest = $r->user()->permits('sales.view') ? (clone $sales)->with('customer', 'user')->latest()->limit(6)->get() : collect();
         $low = Product::with('category')->whereColumn('stock', '<=', 'minimum_stock')->orderBy('stock')->limit(6)->get();
         $charts = $financial ? app(ReportService::class)->charts($from, $to) : [];

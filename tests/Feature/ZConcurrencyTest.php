@@ -28,8 +28,9 @@ class ZConcurrencyTest extends TestCase
         $barrier = sys_get_temp_dir().'/stockflow-race-'.bin2hex(random_bytes(8));
         $key = (string) \Str::uuid();
         $processes = [];
-        $connection = config('database.connections.mysql');
-        $environment = ['APP_ENV' => 'testing', 'DB_CONNECTION' => 'mysql', 'DB_DATABASE' => $connection['database'], 'DB_HOST' => $connection['host'], 'DB_PORT' => (string) $connection['port'], 'DB_USERNAME' => $connection['username'], 'DB_PASSWORD' => $connection['password']];
+        $driver = config('database.default');
+        $connection = config('database.connections.'.$driver);
+        $environment = ['APP_ENV' => 'testing', 'DB_CONNECTION' => $driver, 'DB_DATABASE' => $connection['database'], 'DB_HOST' => $connection['host'], 'DB_PORT' => (string) $connection['port'], 'DB_USERNAME' => $connection['username'], 'DB_PASSWORD' => $connection['password'], 'DB_ENCRYPT' => (string) ($connection['encrypt'] ?? 'yes'), 'DB_TRUST_SERVER_CERTIFICATE' => (string) ($connection['trust_server_certificate'] ?? 'false')];
         for ($i = 0; $i < 2; $i++) {
             $processes[] = new Process([PHP_BINARY, base_path('tests/concurrency-worker.php'), (string) $user->id, (string) $customer->id, (string) $product->id, $sameKey ? $key : (string) \Str::uuid(), $barrier], base_path(), $environment, null, 20);
         }

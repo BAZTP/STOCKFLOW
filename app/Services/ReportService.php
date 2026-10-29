@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Support\Money;
+use App\Support\SqlDate;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -34,7 +35,7 @@ class ReportService
         $financial = ['period' => 'Período', 'transactions' => 'Ventas', 'gross' => 'Subtotal', 'discount' => 'Descuentos', 'net' => 'Ingreso neto', 'tax' => 'Impuestos', 'total' => 'Total con impuestos', 'cost' => 'Costo de venta', 'profit' => 'Ganancia bruta'];
         if (in_array($type, ['daily', 'monthly', 'annual', 'profit'])) {
             $expr = match ($type) {
-                'monthly' => "DATE_FORMAT(s.created_at,'%Y-%m')",'annual' => 'YEAR(s.created_at)',default => 'DATE(s.created_at)'
+                'monthly' => SqlDate::month('s.created_at'),'annual' => 'YEAR(s.created_at)',default => SqlDate::day('s.created_at')
             };
             $query = $this->sales($from, $to)->selectRaw($expr.' as period, '.$this->totals())->groupByRaw($expr)->orderBy('period');
             $columns = $financial;
@@ -72,8 +73,10 @@ class ReportService
 
     public function charts(string $from, string $to): array
     {
-        $daily = $this->sales($from, $to)->selectRaw('DATE(s.created_at) as label,SUM(s.total) as value,SUM(s.subtotal-s.discount) as net')->groupByRaw('DATE(s.created_at)')->orderBy('label')->get();
-        $monthly = $this->sales($from, $to)->selectRaw("DATE_FORMAT(s.created_at,'%Y-%m') as label,SUM(s.subtotal-s.discount) as value")->groupByRaw("DATE_FORMAT(s.created_at,'%Y-%m')")->orderBy('label')->get();
+        $day = SqlDate::day('s.created_at');
+        $month = SqlDate::month('s.created_at');
+        $daily = $this->sales($from, $to)->selectRaw($day.' as label,SUM(s.total) as value,SUM(s.subtotal-s.discount) as net')->groupByRaw($day)->orderBy('label')->get();
+        $monthly = $this->sales($from, $to)->selectRaw($month.' as label,SUM(s.subtotal-s.discount) as value')->groupByRaw($month)->orderBy('label')->get();
         $top = $this->report('top-products', $from, $to)['query']->limit(5)->get();
         $categories = $this->sales($from, $to)->join('sale_items as item', 'item.sale_id', '=', 's.id')->select('item.category_name as label')->selectRaw('SUM(item.unit_price*item.quantity-item.discount) as value')->groupBy('item.category_name')->orderByDesc('value')->limit(10)->get();
         $cumulative = [];

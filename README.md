@@ -1,6 +1,6 @@
 # StockFlow ERP
 
-Aplicación de inventario y ventas con Laravel 13, PHP 8.5, MySQL 8.4, Blade,
+Aplicación de inventario y ventas con Laravel 13, PHP 8.5, SQL Server 2022, Blade,
 Livewire 4, Alpine.js, Tailwind CSS, Chart.js, Lucide y DomPDF.
 
 ![Dashboard con datos de demostración](docs/screenshots/dashboard.png)
@@ -21,7 +21,7 @@ Livewire 4, Alpine.js, Tailwind CSS, Chart.js, Lucide y DomPDF.
   carrito, impuestos, descuentos autorizados y pagos en efectivo, tarjeta o
   transferencia. El efectivo calcula cambio; los demás métodos requieren el
   importe exacto.
-- Confirmación transaccional e idempotente de ventas, bloqueos MySQL para evitar
+- Confirmación transaccional e idempotente de ventas, bloqueos de filas para evitar
   sobreventa y anulación completa con reversión de inventario.
 - Comprobantes internos PDF descargables e imprimibles, con datos históricos
   de empresa, cliente, precios, impuestos y categorías.
@@ -29,7 +29,7 @@ Livewire 4, Alpine.js, Tailwind CSS, Chart.js, Lucide y DomPDF.
   productos más vendidos, sin movimiento, inventario, stock bajo y ganancia
   bruta estimada; exportación CSV y PDF.
 - Dashboard con cinco gráficos, filtros por fechas, tema claro/oscuro y diseño
-  responsive. Los datos se consultan en MySQL, incluidos los estados vacíos.
+  responsive. Los datos se consultan en SQL Server, incluidos los estados vacíos.
 
 ## Roles
 
@@ -55,19 +55,23 @@ bash bin/cloud-php php artisan stockflow:admin admin@tuempresa.com
 
 El último comando solicita una contraseña de al menos 12 caracteres sin
 mostrarla. No hay contraseñas de acceso predeterminadas. `cloud-install`
-construye PHP con sus extensiones, instala los lockfiles, prepara MySQL,
+construye PHP con sus extensiones, instala los lockfiles, prepara SQL Server,
 aplica migraciones/roles y compila los recursos. Conserva la clave de aplicación
 y las credenciales locales existentes. Rechaza una configuración DB personalizada
 antes de sobrescribirla.
 
-`cloud-start` comprueba MySQL y la respuesta del formulario de acceso. El
+`cloud-start` comprueba SQL Server y la respuesta del formulario de acceso. El
 servidor de desarrollo escucha en el puerto 8000 de la máquina; no es un
 servidor de producción ni una publicación web.
 
-Los contenedores se llaman `stockflow-db` y `stockflow-app`; utilizan la red
-`stockflow` y el volumen persistente `stockflow-mysql`. Los procesos deben
-reiniciarse después de restaurar una instancia. No eliminar el volumen para
-resolver errores de arranque: contiene los datos de desarrollo.
+Los contenedores se llaman `stockflow-sqlserver` y `stockflow-app-sqlserver`;
+utilizan la red `stockflow` y el volumen persistente `stockflow-sqlserver-data`.
+El motor se construye con paquetes oficiales firmados de Microsoft. Las conexiones
+usan ODBC 18, cifrado TLS y una CA local de desarrollo, guardada junto con las
+credenciales fuera del repositorio en `/workspace/cloud-runtime`.
+Al actualizar el entorno anterior, se conserva MySQL y una copia de su `.env`;
+no se transfieren automáticamente sus datos a SQL Server. No elimines volúmenes
+para resolver fallos de arranque.
 
 La red de instalación necesita los destinos oficiales de Composer, npm,
 Docker y Debian; Composer descarga distribuciones mediante `api.github.com`.
@@ -77,40 +81,33 @@ ese certificado como secreto de BuildKit y lo retira de la imagen final.
 ## Instalación nativa en Windows
 
 Consulta [docs/WINDOWS.md](docs/WINDOWS.md). Requiere PHP 8.5, Composer 2,
-Node.js 24 y MySQL 8.4. El código y los comandos son compatibles con una
-instalación nativa; la validación realizada aquí fue en Linux con MySQL real.
+Node.js 24 y SQL Server 2022. El código y los comandos son compatibles con una
+instalación nativa; la validación del motor SQL Server está pendiente por el bloqueo de red descrito abajo.
 
 El archivo `.env.example` no contiene credenciales reales. Configura `.env`
 según tu instalación y no lo subas a Git. Crea las bases `stockflow` y
 `stockflow_test` con un usuario que pueda operar sobre ellas.
 
-## Script SQL de MySQL
+## Script SQL para SQL Server Management Studio
 
-Incluye [database/sql/stockflow-schema.sql](database/sql/stockflow-schema.sql):
-25 tablas con índices y relaciones, más el registro de las cinco migraciones
-aplicadas. No contiene cuentas, contraseñas ni datos comerciales.
-
-Puedes crear la estructura con `php artisan migrate --seed` o importar el SQL
-en una base **nueva y vacía**. No combines ambas creaciones sobre tablas existentes.
-Desde el cliente de MySQL:
-
-```sql
-SOURCE /ruta/al/proyecto/database/sql/stockflow-schema.sql;
-```
-
-En Windows utiliza una ruta con barras `/`, por ejemplo
-`SOURCE C:/proyectos/STOCKFLOW/database/sql/stockflow-schema.sql;`.
-Después de importar y configurar `.env`, ejecuta:
+Abre [database/sql/stockflow-sqlserver.sql](database/sql/stockflow-sqlserver.sql)
+en SSMS, selecciona una base **nueva y vacía** y ejecuta el archivo completo.
+Incluye tablas, índices, relaciones, restricciones y el registro de migraciones;
+no contiene contraseñas ni datos comerciales. Después ejecuta:
 
 ```bash
 php artisan migrate --seed
 php artisan stockflow:admin admin@tuempresa.com
-# Opcional, sólo para desarrollo:
-php artisan stockflow:demo
 ```
 
-Las cinco migraciones iniciales quedan registradas: Laravel aplicará únicamente
-las futuras. El seeder crea roles, permisos y configuración de empresa.
+También puedes crear todo directamente con `php artisan migrate --seed` sin importar
+el archivo. Para regenerar el script desde las migraciones usa
+`php bin/export-sqlserver.php`.
+
+El archivo `database/sql/stockflow-schema.sql` se conserva como referencia de la
+versión anterior de MySQL; **no es compatible con SSMS**. Consulta
+[la guía de Windows](docs/WINDOWS.md) para instalar el motor, sus controladores,
+configurar certificados y crear el usuario de conexión.
 
 ## Datos ficticios y primer uso
 
@@ -141,13 +138,17 @@ npm run build
 
 Las pruebas usan exclusivamente `stockflow_test` y pueden eliminar sus tablas.
 Nunca apuntarlas a la base de trabajo o a producción. Las pruebas de concurrencia
-lanzan procesos PHP independientes contra MySQL; no se sustituyen por SQLite.
+lanzan procesos PHP independientes contra SQL Server; no se sustituyen por SQLite.
 
-Se verificaron 37 pruebas y 181 aserciones, incluidos autenticación, roles,
-CRUD, CSV atómico, precios, recepción idempotente, stock insuficiente, pagos,
-anulación, PDF, reportes, datos demo y dos carreras de ventas concurrentes.
-Chromium verificó acceso real, gráficos, búsqueda Livewire, carrito, tema oscuro,
-menú móvil y ausencia de desbordamiento horizontal tras ajustar los gráficos.
+La regresión de esta adaptación pasó 39 pruebas y 186 aserciones en MySQL;
+el controlador SQL Server compiló y Composer y el formato PHP pasaron sus checks.
+La base anterior también se validó con Chromium. La adaptación a SQL Server
+compila sus controladores oficiales y genera el script de SSMS, pero **todavía
+no se ha validado contra el motor SQL Server**: las descargas del motor redirigen
+a `centralus.data.mcr.microsoft.com` (imagen) o `pmc-geofence.trafficmanager.net`
+(paquetes), bloqueados en el entorno actual. El borrador de red debe guardarse
+y aplicarse antes de completar `cloud-install`, ejecutar la suite contra SQL Server
+y verificar la importación del script. No se ha cambiado la base activa de MySQL.
 
 Para editar estilos ejecuta `npm run dev` en una terminal adicional. PHP y npm
 usan sus respectivos lockfiles. Los comandos PHP nativos equivalen a los
